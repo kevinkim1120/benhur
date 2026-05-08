@@ -1,0 +1,25 @@
+# OMC working directory
+.omc/
+
+# Playwright test artifacts
+.playwright-mcp/
+
+# Test screenshots (development only)
+v*.png
+title-screen.png
+race-scene*.png
+race-active.png
+gameover.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Server logs
+*.log
