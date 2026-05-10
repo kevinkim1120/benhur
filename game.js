@@ -136,9 +136,9 @@ function vibrate(ms) {
 //  Chariot types
 // ============================================================
 const CHARIOT_DATA = {
-  speed:   { id: 'speed',   name: '신속의 마차',  desc: 'HP 적음 / 부스트 강력', sprite: 'player', maxHp: 150, boostPower: 1.5, whipReach: 320 },
-  balance: { id: 'balance', name: '벤허의 마차',  desc: '균형 잡힌 정통파',       sprite: 'player', maxHp: 200, boostPower: 1.2, whipReach: 300 },
-  tank:    { id: 'tank',    name: '강철의 마차',  desc: 'HP 높음 / 채찍 짧음',    sprite: 'player', maxHp: 280, boostPower: 1.0, whipReach: 250 }
+  speed:   { id: 'speed',   name: '신속의 마차',  desc: '빠른 채찍 / HP 적음',     sprite: 'player', maxHp: 150, boostPower: 1.5, whipReach: 420, whipCooldown: 200, whipWidth: 24 },
+  balance: { id: 'balance', name: '벤허의 마차',  desc: '균형 잡힌 정통파',         sprite: 'player', maxHp: 200, boostPower: 1.2, whipReach: 400, whipCooldown: 350, whipWidth: 24 },
+  tank:    { id: 'tank',    name: '강철의 마차',  desc: '느린 채찍 / 폭 3배 / HP↑', sprite: 'player', maxHp: 280, boostPower: 1.0, whipReach: 380, whipCooldown: 600, whipWidth: 72 }
 };
 
 // ============================================================
@@ -427,6 +427,19 @@ class BootScene extends Phaser.Scene {
       p(g, 1, 1, 6, 6, 0xc0a070);
       p(g, 2, 2, 4, 4, 0xe0c890);
     });
+
+    // Water hazard (river)
+    make('pix_water', 80, 56, (g, p) => {
+      p(g, 0, 0, 80, 56, 0x2a5a80);
+      p(g, 4, 4, 72, 48, 0x4080b0);
+      p(g, 6, 6, 68, 44, 0x60a0d0);
+      for (let i = 0; i < 14; i++) {
+        const x = ((i * 11 + 3) % 70) + 4;
+        const y = ((i * 7 + 5) % 42) + 6;
+        p(g, x, y, 6, 1, 0x90c0e0);
+        p(g, x + 1, y + 1, 4, 1, 0xc0e0ff);
+      }
+    });
   }
 }
 
@@ -481,14 +494,17 @@ class TitleScene extends Phaser.Scene {
       this.muteIcon.setText(sfx.muted ? '🔇' : '🔊');
     });
 
-    this.add.text(GAME_W/2, GAME_H*0.84, '⚔️ 채찍 (앞으로 길게)   |   🔥 부스트', {
-      fontFamily: 'sans-serif', fontSize: '20px', color: '#a07c4c'
-    }).setOrigin(0.5);
-    this.add.text(GAME_W/2, GAME_H*0.89, '연속 처치 → 콤보 보너스   |   ❤️💎🛡️⏰ 픽업', {
+    this.add.text(GAME_W/2, GAME_H*0.84, '⚔️ 채찍 (Z/Space)   🔥 부스트 (Shift)', {
       fontFamily: 'sans-serif', fontSize: '18px', color: '#a07c4c'
     }).setOrigin(0.5);
-    this.add.text(GAME_W/2, GAME_H*0.94, '4 스테이지 + 메살라 4페이즈   |   v1.0', {
-      fontFamily: 'sans-serif', fontSize: '14px', color: '#6a4828'
+    this.add.text(GAME_W/2, GAME_H*0.89, '🌪 사막 = 모래 미끄러짐   💧 강 = 물웅덩이 위험', {
+      fontFamily: 'sans-serif', fontSize: '16px', color: '#a07c4c'
+    }).setOrigin(0.5);
+    this.add.text(GAME_W/2, GAME_H*0.94, '연속 처치 → 콤보 보너스   |   ❤️💎🛡️⏰ 픽업', {
+      fontFamily: 'sans-serif', fontSize: '15px', color: '#a07c4c'
+    }).setOrigin(0.5);
+    this.add.text(GAME_W/2, GAME_H*0.98, '4 스테이지 + 메살라 4페이즈   |   v1.2', {
+      fontFamily: 'sans-serif', fontSize: '13px', color: '#6a4828'
     }).setOrigin(0.5);
   }
 }
@@ -521,14 +537,14 @@ class SelectScene extends Phaser.Scene {
       this.add.text(GAME_W/2 + 30, y - 25, c.desc, {
         fontFamily: 'sans-serif', fontSize: '17px', color: '#fff'
       }).setOrigin(0.5);
-      this.add.text(GAME_W/2 + 30, y + 15, `HP ${c.maxHp}`, {
-        fontFamily: 'sans-serif', fontSize: '16px', color: '#80ff80'
+      this.add.text(GAME_W/2 + 30, y + 8, `HP ${c.maxHp}  /  부스트 x${c.boostPower}`, {
+        fontFamily: 'sans-serif', fontSize: '15px', color: '#80ff80'
       }).setOrigin(0.5);
-      this.add.text(GAME_W/2 + 30, y + 40, `채찍 ${c.whipReach}px`, {
-        fontFamily: 'sans-serif', fontSize: '16px', color: '#f4d066'
+      this.add.text(GAME_W/2 + 30, y + 35, `채찍  길이 ${c.whipReach}  /  폭 ${c.whipWidth*2}`, {
+        fontFamily: 'sans-serif', fontSize: '15px', color: '#f4d066'
       }).setOrigin(0.5);
-      this.add.text(GAME_W/2 + 30, y + 65, `부스트 x${c.boostPower}`, {
-        fontFamily: 'sans-serif', fontSize: '16px', color: '#ff8040'
+      this.add.text(GAME_W/2 + 30, y + 60, `채찍 쿨다운 ${c.whipCooldown}ms`, {
+        fontFamily: 'sans-serif', fontSize: '14px', color: '#a0e0ff'
       }).setOrigin(0.5);
       card.on('pointerdown', () => {
         sfx.play('pickup');
@@ -571,6 +587,11 @@ class RaceScene extends Phaser.Scene {
     this.boostActive = false;
     this.boostCooldown = 0;
     this.boostDuration = 0;
+
+    // Cooldowns / env
+    this.whipCooldown = 0;
+    this.envSlowUntil = 0;
+    this._wasBoostReady = true;
   }
 
   create() {
@@ -623,6 +644,7 @@ class RaceScene extends Phaser.Scene {
     this.enemyProjectiles = this.physics.add.group();
     this.pickups = this.physics.add.group();
     this.bossBlades = this.add.group();
+    this.hazards = this.physics.add.group();
 
     // Spawns
     if (this.cfg.boss) {
@@ -637,12 +659,18 @@ class RaceScene extends Phaser.Scene {
     this.spawnTimers.push(this.time.addEvent({
       delay: 4500, loop: true, callback: () => this.spawnPickup()
     }));
+    if (this.cfg.env === 'river') {
+      this.spawnTimers.push(this.time.addEvent({
+        delay: 3500, loop: true, callback: () => this.spawnHazard()
+      }));
+    }
 
     // Collisions
     this.physics.add.overlap(this.player, this.obstacles, (p,o) => this.hitObstacle(p,o));
     this.physics.add.overlap(this.player, this.rivals, (p,r) => this.bumpRival(p,r));
     this.physics.add.overlap(this.player, this.enemyProjectiles, (p,e) => this.hitByEnemyProjectile(p,e));
     this.physics.add.overlap(this.player, this.pickups, (p,it) => this.collectPickup(p,it));
+    this.physics.add.overlap(this.player, this.hazards, (p,h) => this.hitHazard(p,h));
 
     this.createHUD();
     this.createActionButtons();
@@ -655,7 +683,7 @@ class RaceScene extends Phaser.Scene {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keyZ = this.input.keyboard.addKey('Z');
     this.keySpace = this.input.keyboard.addKey('SPACE');
-    this.keyB = this.input.keyboard.addKey('X');
+    this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
     // Time warp factor (for hourglass pickup)
     this.timeWarp = 1.0;
@@ -724,9 +752,15 @@ class RaceScene extends Phaser.Scene {
     this.add.text(110, boostY + 78, '부스트', {
       fontFamily: 'Georgia', fontSize: '16px', color: '#a0e0ff', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(101);
-    // Boost cooldown ring (graphics)
+    // Boost gauge: track ring (faint) + fill ring (bright) + ready glow
+    this.boostTrack = this.add.graphics().setDepth(101);
+    this.boostTrack.lineStyle(8, 0x143040, 0.7);
+    this.boostTrack.strokeCircle(110, boostY, 70);
     this.boostRing = this.add.graphics().setDepth(102);
+    this.boostReadyGlow = this.add.circle(110, boostY, 78, 0xffff80, 0).setDepth(99);
     this.boostBtn.on('pointerdown', (pt,lx,ly,ev) => { ev.stopPropagation(); this.tryBoost(); });
+
+    this.whipRing = this.add.graphics().setDepth(102);
   }
 
   // ---- Input ----
@@ -896,12 +930,14 @@ class RaceScene extends Phaser.Scene {
   // ---- Combat ----
   attackWhip() {
     if (this.gameOver || this.stageClear) return;
+    if (this.whipCooldown > 0) return;
+    this.whipCooldown = this.chariot.whipCooldown;
     sfx.play('whip');
 
     const px = this.player.x;
     const py = this.player.y - 60;
     const reach = this.chariot.whipReach;
-    const halfWidth = 24;
+    const halfWidth = this.chariot.whipWidth;
 
     const glow = this.add.rectangle(px, py, halfWidth * 2.5, reach, 0xf4d066, 0.45)
       .setOrigin(0.5, 1).setDepth(11);
@@ -912,7 +948,7 @@ class RaceScene extends Phaser.Scene {
         targets: glow, alpha: 0, duration: 250, onComplete: () => glow.destroy()
       })
     });
-    const core = this.add.rectangle(px, py, 8, reach, 0xffffff, 0.95)
+    const core = this.add.rectangle(px, py, Math.max(8, halfWidth * 0.3), reach, 0xffffff, 0.95)
       .setOrigin(0.5, 1).setDepth(12);
     core.scaleY = 0;
     this.tweens.add({
@@ -939,7 +975,8 @@ class RaceScene extends Phaser.Scene {
     let hitCount = 0;
 
     this.rivals.getChildren().forEach(r => {
-      if (Math.abs(r.x - px) < halfWidth + 30 && r.y > py - reach && r.y < py + 30) {
+      const halfH = (r.kind === 'boss') ? 120 : 30;
+      if (Math.abs(r.x - px) < halfWidth + 30 && (r.y + halfH) > py - reach && (r.y - halfH) < py + 30) {
         const dmg = (r.kind === 'boss') ? 14 : 24;
         r.hp -= dmg;
         this.flash(r);
@@ -950,18 +987,7 @@ class RaceScene extends Phaser.Scene {
         if (r.hp <= 0) this.killRival(r);
       }
     });
-    this.obstacles.getChildren().forEach(o => {
-      if (Math.abs(o.x - px) < halfWidth + 25 && o.y > py - reach && o.y < py + 30) {
-        this.spawnHitSpark(o.x, o.y);
-        this.spawnDamageNumber(o.x, o.y, 'BREAK', '#ffffff');
-        this.tweens.add({
-          targets: o, scale: o.scale * 0.5, alpha: 0, duration: 180,
-          onComplete: () => o.destroy()
-        });
-        this.score += Math.floor(10 * this.comboMultiplier());
-        hitCount++;
-      }
-    });
+    // (Whip cannot break obstacles — only enemies, mines, blades.)
     this.enemyProjectiles.getChildren().forEach(m => {
       if (Math.abs(m.x - px) < halfWidth + 30 && m.y > py - reach && m.y < py + 30) {
         this.detonateMine(m, false);
@@ -985,6 +1011,33 @@ class RaceScene extends Phaser.Scene {
 
     this.cameras.main.shake(hitCount > 0 ? 160 : 60, hitCount > 0 ? 0.008 : 0.003);
     if (hitCount > 0) vibrate(30);
+  }
+
+  // ---- River hazards ----
+  spawnHazard() {
+    if (this.gameOver || this.stageClear) return;
+    const x = Phaser.Math.Between(ROAD_LEFT + 60, ROAD_RIGHT - 60);
+    const h = this.physics.add.image(x, -60, 'pix_water').setDepth(0.5);
+    h.body.setSize(70, 50);
+    h.kind = 'water';
+    h.dmg = 5;
+    h.lastHit = 0;
+    this.hazards.add(h);
+  }
+
+  hitHazard(player, h) {
+    if (this.time.now < (h.lastHit || 0) + 600) return;
+    h.lastHit = this.time.now;
+    if (this.time.now < player.invincibleUntil) {
+      this.spawnDamageNumber(player.x, player.y - 30, '🛡', '#a0e0ff');
+      return;
+    }
+    this.player.hp -= h.dmg;
+    sfx.play('damage');
+    this.spawnDamageNumber(player.x, player.y - 30, `-${h.dmg} 💧`, '#a0e0ff');
+    this.envSlowUntil = this.time.now + 700;
+    this.flash(player);
+    if (this.player.hp <= 0) { this.player.hp = 0; this.endGame(); }
   }
 
   // ---- Mines ----
@@ -1319,15 +1372,42 @@ class RaceScene extends Phaser.Scene {
       this.bossHpFill.scaleX = Math.max(0, this.boss.hp / this.boss.maxHp);
     }
 
-    // Boost cooldown ring
+    // Boost gauge: thick fill ring around button
     this.boostRing.clear();
-    if (this.boostCooldown > 0) {
-      const ratio2 = 1 - this.boostCooldown / 8000;
-      this.boostRing.lineStyle(5, 0xa0e0ff, 0.8);
+    const cx = 110, cy = GAME_H - 110;
+    if (this.boostActive) {
+      // Active: fully lit ring + inner pulse
+      this.boostRing.lineStyle(8, 0xffd060, 1);
+      this.boostRing.strokeCircle(cx, cy, 70);
+      this.boostBtn.fillAlpha = 1.0;
+      this.boostBtn.setStrokeStyle(5, 0xffd060);
+    } else if (this.boostCooldown > 0) {
+      // Charging: fill arc clockwise from top
+      const ratio = 1 - this.boostCooldown / 8000;
+      this.boostRing.lineStyle(8, 0xa0e0ff, 1);
       this.boostRing.beginPath();
-      this.boostRing.arc(110, GAME_H - 110, 60, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio2);
+      this.boostRing.arc(cx, cy, 70, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio);
       this.boostRing.strokePath();
+      this.boostBtn.fillAlpha = 0.35;
+      this.boostBtn.setStrokeStyle(5, 0x4a6a80);
+    } else {
+      // Ready: full bright ring
+      this.boostRing.lineStyle(8, 0xffff80, 1);
+      this.boostRing.strokeCircle(cx, cy, 70);
+      this.boostBtn.fillAlpha = 0.95;
+      this.boostBtn.setStrokeStyle(5, 0xffff80);
     }
+
+    // Whip cooldown ring
+    this.whipRing.clear();
+    if (this.whipCooldown > 0) {
+      const ratio3 = 1 - this.whipCooldown / this.chariot.whipCooldown;
+      this.whipRing.lineStyle(5, 0xf4d066, 0.8);
+      this.whipRing.beginPath();
+      this.whipRing.arc(GAME_W - 110, GAME_H - 110, 72, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio3);
+      this.whipRing.strokePath();
+    }
+    if (this.whipBtn) this.whipBtn.fillAlpha = this.whipCooldown > 0 ? 0.5 : 0.9;
   }
 
   // ---- Update ----
@@ -1339,7 +1419,8 @@ class RaceScene extends Phaser.Scene {
 
     const dt = (delta / 1000) * this.timeWarp;
     const speedBase = 380;
-    const speed = this.boostActive ? speedBase * 1.7 : speedBase;
+    const envSlow = (this.time.now < this.envSlowUntil) ? 0.6 : 1.0;
+    const speed = (this.boostActive ? speedBase * 1.7 : speedBase) * envSlow;
     this.distance += speed * dt * 0.1;
 
     // Boost timer
@@ -1351,6 +1432,23 @@ class RaceScene extends Phaser.Scene {
       }
     }
     if (this.boostCooldown > 0) this.boostCooldown -= delta;
+    if (this.whipCooldown > 0) this.whipCooldown -= delta;
+
+    // Boost ready transition: pulse + chime
+    const boostReady = !this.boostActive && this.boostCooldown <= 0;
+    if (boostReady && !this._wasBoostReady) {
+      sfx.play('pickup');
+      this.boostReadyGlow.setAlpha(0.6);
+      this.tweens.add({ targets: this.boostReadyGlow, alpha: 0, scale: 1.6, duration: 600, onComplete: () => this.boostReadyGlow.setScale(1) });
+      this.tweens.add({ targets: this.boostBtn, scale: 1.25, duration: 160, yoyo: true, ease: 'Cubic.easeOut' });
+    }
+    this._wasBoostReady = boostReady;
+
+    // Sand drift (desert) - lateral pull, suppressed during boost
+    if (this.cfg.env === 'desert' && !this.boostActive) {
+      const drift = Math.sin(time * 0.0015) * 60;
+      this.player.x = Phaser.Math.Clamp(this.player.x + drift * dt, ROAD_LEFT + 40, ROAD_RIGHT - 40);
+    }
 
     // Combo timer
     if (this.combo > 0) {
@@ -1474,7 +1572,16 @@ class RaceScene extends Phaser.Scene {
       it.body.setVelocityY(speed);
       if (it.y > GAME_H + 60) it.destroy();
     });
+    // Hazards (river water patches)
+    this.hazards.getChildren().forEach(h => {
+      h.body.setVelocityY(speed);
+      if (h.y > GAME_H + 100) h.destroy();
+    });
+    // Enemy projectiles (mines): keep them flowing toward the player
     this.enemyProjectiles.getChildren().forEach(p => {
+      if (p.kind === 'mine' && p.body) {
+        p.body.setVelocityY(p.scrollSpeed || speed);
+      }
       if (p.y > GAME_H + 50 || p.y < -50 || p.x < -50 || p.x > GAME_W + 50) p.destroy();
     });
 
@@ -1488,7 +1595,7 @@ class RaceScene extends Phaser.Scene {
     if (this.cursors.left.isDown)  this.player.x = Math.max(ROAD_LEFT + 40, this.player.x - 6);
     if (this.cursors.right.isDown) this.player.x = Math.min(ROAD_RIGHT - 40, this.player.x + 6);
     if (Phaser.Input.Keyboard.JustDown(this.keyZ) || Phaser.Input.Keyboard.JustDown(this.keySpace)) this.attackWhip();
-    if (Phaser.Input.Keyboard.JustDown(this.keyB)) this.tryBoost();
+    if (Phaser.Input.Keyboard.JustDown(this.keyShift)) this.tryBoost();
 
     this.player.y = GAME_H - 200 + Math.sin(time * 0.008) * 3;
 
