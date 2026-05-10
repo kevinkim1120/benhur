@@ -155,6 +155,66 @@ const STAGE_DATA = [
 const OBS_KEYS = ['pixobs_rock', 'pixobs_log', 'pixobs_spike', 'pixobs_pillar', 'pixobs_woodspike', 'pixobs_debris'];
 
 // ============================================================
+//  Progression save (localStorage)
+// ============================================================
+const PROGRESS = {
+  load() {
+    let bps;
+    try { bps = JSON.parse(localStorage.getItem('benhur_best_stages') || '[0,0,0,0]'); }
+    catch (e) { bps = [0, 0, 0, 0]; }
+    if (!Array.isArray(bps) || bps.length !== 4) bps = [0, 0, 0, 0];
+    return {
+      maxStage: parseInt(localStorage.getItem('benhur_max_stage') || '0', 10),
+      bestPerStage: bps,
+      best: parseInt(localStorage.getItem('benhur_best') || '0', 10)
+    };
+  },
+  saveClear(stageNum, score) {
+    const p = this.load();
+    if (stageNum > p.maxStage) localStorage.setItem('benhur_max_stage', String(stageNum));
+    p.bestPerStage[stageNum - 1] = Math.max(p.bestPerStage[stageNum - 1] || 0, score);
+    localStorage.setItem('benhur_best_stages', JSON.stringify(p.bestPerStage));
+    if (score > p.best) localStorage.setItem('benhur_best', String(score));
+  },
+  reset() {
+    localStorage.removeItem('benhur_max_stage');
+    localStorage.removeItem('benhur_best_stages');
+    // 'benhur_best' kept for nostalgia
+  }
+};
+
+// ============================================================
+//  Story (per stage)
+// ============================================================
+const STORY = {
+  1: '유다 벤허, 노예의 사슬을 끊고\n로마의 흙먼지 위로 다시 올라서다.',
+  2: '모래폭풍 너머, 메살라의 부하들이\n그의 길을 가로막는다.',
+  3: '강가의 진흙길.\n살아남는 자만이 메살라를 마주할 수 있다.',
+  4: '콜로세움의 함성.\n마침내 그와 정면으로 맞선다.'
+};
+
+// ============================================================
+//  Upgrades (run-scoped, applied on stage entry)
+// ============================================================
+const UPGRADE_DEFS = [
+  { id: 'hp',    icon: '❤',  name: 'HP +30',           apply: u => { u.hpBonus    += 30;    }, baseCost: 400 },
+  { id: 'whip',  icon: '⚔',  name: '채찍 데미지 +25%', apply: u => { u.whipMul    *= 1.25;  }, baseCost: 700 },
+  { id: 'boost', icon: '🔥', name: '부스트 쿨 -20%',    apply: u => { u.boostCDMul *= 0.8;   }, baseCost: 500 },
+  { id: 'combo', icon: '⏰', name: '콤보 시간 +1.5s',   apply: u => { u.comboBonus += 1500;  }, baseCost: 400 }
+];
+const UPGRADE_MAX = 3;
+
+function newUpgradeState() {
+  return {
+    hpBonus: 0, whipMul: 1.0, boostCDMul: 1.0, comboBonus: 0,
+    purchases: { hp: 0, whip: 0, boost: 0, combo: 0 }
+  };
+}
+function upgradeCost(def, lvl) {
+  return def.baseCost * Math.pow(2, lvl);
+}
+
+// ============================================================
 //  Boot
 // ============================================================
 class BootScene extends Phaser.Scene {
@@ -466,11 +526,23 @@ class TitleScene extends Phaser.Scene {
       stroke: '#3a1a05', strokeThickness: 4
     }).setOrigin(0.5);
 
-    // Best score
-    const best = parseInt(localStorage.getItem('benhur_best') || '0', 10);
-    this.add.text(GAME_W/2, GAME_H*0.27, `BEST  ${best}`, {
+    // Best score + progress
+    const prog = PROGRESS.load();
+    this.add.text(GAME_W/2, GAME_H*0.265, `BEST  ${prog.best}`, {
       fontFamily: 'Georgia', fontSize: '22px', color: '#f4d066', fontStyle: 'bold'
     }).setOrigin(0.5);
+    this.add.text(GAME_W/2, GAME_H*0.305, `진행도  ${Math.min(prog.maxStage, 4)} / 4 스테이지 클리어`, {
+      fontFamily: 'sans-serif', fontSize: '16px', color: '#a07c4c'
+    }).setOrigin(0.5);
+    if (prog.maxStage > 0) {
+      const reset = this.add.text(GAME_W - 20, GAME_H - 20, '진행도 초기화', {
+        fontFamily: 'sans-serif', fontSize: '12px', color: '#6a4828'
+      }).setOrigin(1, 1).setInteractive({ useHandCursor: true });
+      reset.on('pointerdown', () => {
+        PROGRESS.reset();
+        this.scene.restart();
+      });
+    }
 
     this.add.image(GAME_W/2, GAME_H*0.45, 'player').setScale(0.55);
 
@@ -548,8 +620,7 @@ class SelectScene extends Phaser.Scene {
       }).setOrigin(0.5);
       card.on('pointerdown', () => {
         sfx.play('pickup');
-        sfx.startBGM();
-        this.scene.start('Race', { stage: 1, chariot: id });
+        this.scene.start('StageSelect', { chariot: id });
       });
     });
 
@@ -558,6 +629,178 @@ class SelectScene extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '20px', color: '#a07c4c'
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('Title'));
+  }
+}
+
+// ============================================================
+//  Stage Select
+// ============================================================
+class StageSelectScene extends Phaser.Scene {
+  constructor() { super('StageSelect'); }
+  init(data) { this.chariot = data.chariot || 'balance'; }
+  create() {
+    const prog = PROGRESS.load();
+    const maxUnlocked = Math.min(4, prog.maxStage + 1);
+
+    this.add.rectangle(0, 0, GAME_W, GAME_H, 0x2a1a0a).setOrigin(0);
+    this.add.text(GAME_W/2, 60, '스테이지 선택', {
+      fontFamily: 'Georgia', fontSize: '38px', color: '#f4d066', fontStyle: 'bold',
+      stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5);
+    this.add.text(GAME_W/2, 105, `해금  ${maxUnlocked} / 4   |   STAGE 2+ 진입 시 시작 점수 지급`, {
+      fontFamily: 'sans-serif', fontSize: '14px', color: '#a07c4c'
+    }).setOrigin(0.5);
+
+    [1, 2, 3, 4].forEach(n => {
+      const stage = STAGE_DATA[n];
+      const i = n - 1;
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = (col === 0) ? GAME_W/4 + 10 : GAME_W*3/4 - 10;
+      const y = 200 + row * 290;
+      const unlocked = n <= maxUnlocked;
+      const stroke = unlocked ? 0xc89030 : 0x4a3a18;
+
+      const card = this.add.rectangle(x, y, GAME_W/2 - 35, 250, 0x1a0e05)
+        .setStrokeStyle(4, stroke);
+      this.add.text(x, y - 95, `STAGE ${n}`, {
+        fontFamily: 'Georgia', fontSize: '28px', color: unlocked ? '#f4d066' : '#6a4828', fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.add.text(x, y - 55, stage.name, {
+        fontFamily: 'sans-serif', fontSize: '16px', color: unlocked ? '#fff' : '#6a4828'
+      }).setOrigin(0.5);
+      if (n === 4) {
+        this.add.text(x, y - 30, '⚔ 보스 ⚔', {
+          fontFamily: 'Georgia', fontSize: '14px', color: unlocked ? '#ff8040' : '#6a4828'
+        }).setOrigin(0.5);
+      }
+      const best = prog.bestPerStage[i] || 0;
+      this.add.text(x, y + 5, best > 0 ? `BEST  ${best}` : '미클리어', {
+        fontFamily: 'sans-serif', fontSize: '15px', color: best > 0 ? '#80ff80' : '#6a4828'
+      }).setOrigin(0.5);
+      const startScore = (n - 1) * 800;
+      if (unlocked && n > 1) {
+        this.add.text(x, y + 35, `시작 점수 +${startScore}`, {
+          fontFamily: 'sans-serif', fontSize: '13px', color: '#a0e0ff'
+        }).setOrigin(0.5);
+      }
+      if (!unlocked) {
+        this.add.text(x, y + 65, '🔒 LOCKED', {
+          fontFamily: 'sans-serif', fontSize: '20px', color: '#6a4828', fontStyle: 'bold'
+        }).setOrigin(0.5);
+      } else {
+        card.setInteractive({ useHandCursor: true });
+        card.on('pointerdown', () => {
+          sfx.play('pickup');
+          sfx.startBGM();
+          if (n === 1) {
+            this.scene.start('Race', { stage: 1, score: 0, chariot: this.chariot, upgrades: newUpgradeState() });
+          } else {
+            this.scene.start('Shop', { stage: n, score: startScore, chariot: this.chariot, upgrades: newUpgradeState() });
+          }
+        });
+      }
+    });
+
+    const back = this.add.text(GAME_W/2, GAME_H - 35, '◀  마차 다시 선택', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#a07c4c'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.scene.start('Select'));
+  }
+}
+
+// ============================================================
+//  Shop (between stages)
+// ============================================================
+class ShopScene extends Phaser.Scene {
+  constructor() { super('Shop'); }
+  init(data) {
+    this.stageNum = data.stage;
+    this.score = data.score || 0;
+    this.chariotId = data.chariot;
+    this.upgrades = data.upgrades || newUpgradeState();
+  }
+  create() {
+    const cfg = STAGE_DATA[this.stageNum];
+    this.add.rectangle(0, 0, GAME_W, GAME_H, 0x2a1a0a).setOrigin(0);
+    this.add.text(GAME_W/2, 50, '🛒  업그레이드 상점', {
+      fontFamily: 'Georgia', fontSize: '32px', color: '#f4d066', fontStyle: 'bold',
+      stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5);
+    this.add.text(GAME_W/2, 90, `다음:  STAGE ${this.stageNum} - ${cfg.name}`, {
+      fontFamily: 'sans-serif', fontSize: '17px', color: '#fff'
+    }).setOrigin(0.5);
+
+    this.scoreText = this.add.text(GAME_W/2, 130, '', {
+      fontFamily: 'Georgia', fontSize: '26px', color: '#f4d066', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.cards = [];
+    UPGRADE_DEFS.forEach((def, i) => {
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = (col === 0) ? GAME_W/4 + 10 : GAME_W*3/4 - 10;
+      const y = 250 + row * 200;
+      this.makeCard(def, x, y);
+    });
+
+    const btn = this.add.rectangle(GAME_W/2, GAME_H - 70, 320, 76, 0xc8902c)
+      .setStrokeStyle(4, 0x5a3008).setInteractive({ useHandCursor: true });
+    this.add.text(GAME_W/2, GAME_H - 70, `▶  STAGE ${this.stageNum} 진입`, {
+      fontFamily: 'Georgia', fontSize: '24px', color: '#1a0e05', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    btn.on('pointerdown', () => {
+      sfx.play('pickup');
+      this.scene.start('Race', {
+        stage: this.stageNum, score: this.score, chariot: this.chariotId, upgrades: this.upgrades
+      });
+    });
+
+    this.refresh();
+  }
+  makeCard(def, x, y) {
+    const card = this.add.rectangle(x, y, GAME_W/2 - 35, 170, 0x1a0e05)
+      .setStrokeStyle(3, 0xc89030).setInteractive({ useHandCursor: true });
+    this.add.text(x, y - 56, def.icon, { fontSize: '38px' }).setOrigin(0.5);
+    this.add.text(x, y - 12, def.name, {
+      fontFamily: 'sans-serif', fontSize: '15px', color: '#fff', fontStyle: 'bold', align: 'center', wordWrap: { width: GAME_W/2 - 50 }
+    }).setOrigin(0.5);
+    const lvlText = this.add.text(x, y + 22, '', {
+      fontFamily: 'sans-serif', fontSize: '13px', color: '#80ff80'
+    }).setOrigin(0.5);
+    const costText = this.add.text(x, y + 52, '', {
+      fontFamily: 'Georgia', fontSize: '20px', color: '#f4d066', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    card.on('pointerdown', () => this.buy(def));
+    this.cards.push({ def, card, lvlText, costText });
+  }
+  buy(def) {
+    const lvl = this.upgrades.purchases[def.id];
+    if (lvl >= UPGRADE_MAX) { sfx.play('damage'); return; }
+    const cost = upgradeCost(def, lvl);
+    if (this.score < cost) { sfx.play('damage'); return; }
+    this.score -= cost;
+    this.upgrades.purchases[def.id]++;
+    def.apply(this.upgrades);
+    sfx.play('combo');
+    this.refresh();
+  }
+  refresh() {
+    this.scoreText.setText(`SCORE  ${this.score}`);
+    this.cards.forEach(({ def, card, lvlText, costText }) => {
+      const lvl = this.upgrades.purchases[def.id];
+      const dots = '●'.repeat(lvl) + '○'.repeat(UPGRADE_MAX - lvl);
+      lvlText.setText(`${dots}  (${lvl}/${UPGRADE_MAX})`);
+      if (lvl >= UPGRADE_MAX) {
+        costText.setText('MAX');
+        costText.setColor('#80ff80');
+        card.setStrokeStyle(3, 0x80ff80);
+      } else {
+        const c = upgradeCost(def, lvl);
+        const ok = this.score >= c;
+        costText.setText(`${c}`);
+        costText.setColor(ok ? '#f4d066' : '#a04030');
+        card.setStrokeStyle(3, ok ? 0xc89030 : 0x6a3a18);
+      }
+    });
   }
 }
 
@@ -592,6 +835,13 @@ class RaceScene extends Phaser.Scene {
     this.whipCooldown = 0;
     this.envSlowUntil = 0;
     this._wasBoostReady = true;
+
+    // Upgrades — applied as effective stats
+    this.upgrades = data.upgrades || newUpgradeState();
+    this.effectiveMaxHp     = this.chariot.maxHp + this.upgrades.hpBonus;
+    this.effectiveBoostCDMs = Math.round(8000 * this.upgrades.boostCDMul);
+    this.effectiveWhipMul   = this.upgrades.whipMul;
+    this.effectiveComboTime = 3000 + this.upgrades.comboBonus;
   }
 
   create() {
@@ -633,8 +883,8 @@ class RaceScene extends Phaser.Scene {
     // Player
     this.player = this.physics.add.image(GAME_W/2, GAME_H - 200, this.chariot.sprite).setScale(0.5).setDepth(10);
     this.player.body.setSize(this.player.width * 0.55, this.player.height * 0.7);
-    this.player.maxHp = this.chariot.maxHp;
-    this.player.hp = this.chariot.maxHp;
+    this.player.maxHp = this.effectiveMaxHp;
+    this.player.hp = this.effectiveMaxHp;
     this.player.invincibleUntil = 0;
     this.player.shieldUntil = 0;
 
@@ -691,17 +941,30 @@ class RaceScene extends Phaser.Scene {
 
   showStageBanner() {
     sfx.play('stage');
-    const b = this.add.rectangle(GAME_W/2, GAME_H/2, GAME_W, 130, 0x000, 0.7).setDepth(150);
-    const t1 = this.add.text(GAME_W/2, GAME_H/2 - 24, `STAGE ${this.stageNum}`, {
-      fontFamily: 'Georgia', fontSize: '40px', color: '#f4d066', fontStyle: 'bold',
+    const overlay = this.add.rectangle(0, 0, GAME_W, GAME_H, 0x000000, 0.85).setOrigin(0).setDepth(149);
+    overlay.alpha = 0;
+    this.tweens.add({ targets: overlay, alpha: 1, duration: 250 });
+
+    const story = STORY[this.stageNum] || '';
+    const storyText = this.add.text(GAME_W/2, GAME_H/2 - 110, story, {
+      fontFamily: 'Georgia', fontSize: '22px', color: '#f4d066',
+      stroke: '#000', strokeThickness: 3, align: 'center', lineSpacing: 10
+    }).setOrigin(0.5).setDepth(151).setAlpha(0);
+    this.tweens.add({ targets: storyText, alpha: 1, duration: 500, delay: 300 });
+
+    const b = this.add.rectangle(GAME_W/2, GAME_H/2 + 60, GAME_W, 110, 0x1a0e05, 0.95).setDepth(150).setAlpha(0);
+    const t1 = this.add.text(GAME_W/2, GAME_H/2 + 38, `STAGE ${this.stageNum}`, {
+      fontFamily: 'Georgia', fontSize: '38px', color: '#f4d066', fontStyle: 'bold',
       stroke: '#000', strokeThickness: 4
-    }).setOrigin(0.5).setDepth(151);
-    const t2 = this.add.text(GAME_W/2, GAME_H/2 + 22, this.cfg.name, {
-      fontFamily: 'Georgia', fontSize: '28px', color: '#fff'
-    }).setOrigin(0.5).setDepth(151);
+    }).setOrigin(0.5).setDepth(151).setAlpha(0);
+    const t2 = this.add.text(GAME_W/2, GAME_H/2 + 80, this.cfg.name, {
+      fontFamily: 'Georgia', fontSize: '24px', color: '#fff'
+    }).setOrigin(0.5).setDepth(151).setAlpha(0);
+    this.tweens.add({ targets: [b, t1, t2], alpha: 1, duration: 400, delay: 1400 });
+
     this.tweens.add({
-      targets: [b, t1, t2], alpha: 0, delay: 1500, duration: 600,
-      onComplete: () => { b.destroy(); t1.destroy(); t2.destroy(); }
+      targets: [overlay, storyText, b, t1, t2], alpha: 0, delay: 3000, duration: 500,
+      onComplete: () => { overlay.destroy(); storyText.destroy(); b.destroy(); t1.destroy(); t2.destroy(); }
     });
   }
 
@@ -885,7 +1148,7 @@ class RaceScene extends Phaser.Scene {
   addCombo() {
     this.combo++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
-    this.comboTimer = 3000; // 3s window
+    this.comboTimer = this.effectiveComboTime;
     sfx.play('combo');
     this.showComboLabel();
   }
@@ -915,7 +1178,7 @@ class RaceScene extends Phaser.Scene {
     if (this.boostCooldown > 0 || this.boostActive) return;
     this.boostActive = true;
     this.boostDuration = 1500 * this.chariot.boostPower;
-    this.boostCooldown = 8000;
+    this.boostCooldown = this.effectiveBoostCDMs;
     sfx.play('boost');
     vibrate(80);
     this.player.invincibleUntil = this.time.now + this.boostDuration;
@@ -977,7 +1240,8 @@ class RaceScene extends Phaser.Scene {
     this.rivals.getChildren().forEach(r => {
       const halfH = (r.kind === 'boss') ? 120 : 30;
       if (Math.abs(r.x - px) < halfWidth + 30 && (r.y + halfH) > py - reach && (r.y - halfH) < py + 30) {
-        const dmg = (r.kind === 'boss') ? 14 : 24;
+        const baseDmg = (r.kind === 'boss') ? 14 : 24;
+        const dmg = Math.round(baseDmg * this.effectiveWhipMul);
         r.hp -= dmg;
         this.flash(r);
         this.spawnHitSpark(r.x, r.y);
@@ -1276,9 +1540,8 @@ class RaceScene extends Phaser.Scene {
     const bonus = Math.floor(this.distance) + (this.player.hp * 5) + (this.bestCombo * 50);
     this.score += bonus;
 
-    // Save best
-    const best = parseInt(localStorage.getItem('benhur_best') || '0', 10);
-    if (this.score > best) localStorage.setItem('benhur_best', String(this.score));
+    // Save progression (max stage + per-stage best + best)
+    PROGRESS.saveClear(this.stageNum, this.score);
 
     this.add.rectangle(0, 0, GAME_W, GAME_H, 0x000, 0.7).setOrigin(0).setDepth(200);
     const isFinal = (this.stageNum === 4);
@@ -1314,11 +1577,14 @@ class RaceScene extends Phaser.Scene {
     } else {
       const btn = this.add.rectangle(GAME_W/2, GAME_H/2 + 130, 280, 70, 0xc8902c)
         .setStrokeStyle(4, 0x5a3008).setInteractive({ useHandCursor: true }).setDepth(201);
-      this.add.text(GAME_W/2, GAME_H/2 + 130, `▶ STAGE ${this.stageNum + 1}`, {
-        fontFamily: 'Georgia', fontSize: '28px', color: '#1a0e05', fontStyle: 'bold'
+      this.add.text(GAME_W/2, GAME_H/2 + 130, `🛒  상점 → STAGE ${this.stageNum + 1}`, {
+        fontFamily: 'Georgia', fontSize: '22px', color: '#1a0e05', fontStyle: 'bold'
       }).setOrigin(0.5).setDepth(202);
       btn.on('pointerdown', () => {
-        this.scene.restart({ stage: this.stageNum + 1, score: this.score, chariot: this.chariotId });
+        this.scene.start('Shop', {
+          stage: this.stageNum + 1, score: this.score,
+          chariot: this.chariotId, upgrades: this.upgrades
+        });
       });
     }
   }
@@ -1331,6 +1597,15 @@ class RaceScene extends Phaser.Scene {
 
     const best = parseInt(localStorage.getItem('benhur_best') || '0', 10);
     if (this.score > best) localStorage.setItem('benhur_best', String(this.score));
+    // Per-stage best updates even on defeat
+    try {
+      const arr = JSON.parse(localStorage.getItem('benhur_best_stages') || '[0,0,0,0]');
+      const idx = this.stageNum - 1;
+      if (Array.isArray(arr) && this.score > (arr[idx] || 0)) {
+        arr[idx] = this.score;
+        localStorage.setItem('benhur_best_stages', JSON.stringify(arr));
+      }
+    } catch (e) {}
 
     this.add.rectangle(0, 0, GAME_W, GAME_H, 0x000, 0.6).setOrigin(0).setDepth(200);
     this.add.text(GAME_W/2, GAME_H/2 - 80, 'DEFEATED', {
@@ -1383,7 +1658,7 @@ class RaceScene extends Phaser.Scene {
       this.boostBtn.setStrokeStyle(5, 0xffd060);
     } else if (this.boostCooldown > 0) {
       // Charging: fill arc clockwise from top
-      const ratio = 1 - this.boostCooldown / 8000;
+      const ratio = 1 - this.boostCooldown / this.effectiveBoostCDMs;
       this.boostRing.lineStyle(8, 0xa0e0ff, 1);
       this.boostRing.beginPath();
       this.boostRing.arc(cx, cy, 70, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio);
@@ -1630,7 +1905,7 @@ const config = {
   },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
   input: { activePointers: 3 },
-  scene: [BootScene, TitleScene, SelectScene, RaceScene]
+  scene: [BootScene, TitleScene, SelectScene, StageSelectScene, ShopScene, RaceScene]
 };
 
 const game = new Phaser.Game(config);
