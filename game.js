@@ -835,6 +835,7 @@ class RaceScene extends Phaser.Scene {
     this.whipCooldown = 0;
     this.envSlowUntil = 0;
     this._wasBoostReady = true;
+    this.moveDir = 0;
 
     // Upgrades — applied as effective stats
     this.upgrades = data.upgrades || newUpgradeState();
@@ -1024,6 +1025,34 @@ class RaceScene extends Phaser.Scene {
     this.boostBtn.on('pointerdown', (pt,lx,ly,ev) => { ev.stopPropagation(); this.tryBoost(); });
 
     this.whipRing = this.add.graphics().setDepth(102);
+
+    // Left / Right move buttons (continuous while held)
+    const moveY = GAME_H - 110;
+    this.leftBtn = this.add.circle(215, moveY, 36, 0x8a6a40, 0.85)
+      .setStrokeStyle(4, 0xd4a04c).setDepth(100).setInteractive({ useHandCursor: true });
+    this.add.text(215, moveY, '◀', {
+      fontFamily: 'Georgia', fontSize: '34px', color: '#1a0e05', fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(101);
+    this.rightBtn = this.add.circle(325, moveY, 36, 0x8a6a40, 0.85)
+      .setStrokeStyle(4, 0xd4a04c).setDepth(100).setInteractive({ useHandCursor: true });
+    this.add.text(325, moveY, '▶', {
+      fontFamily: 'Georgia', fontSize: '34px', color: '#1a0e05', fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(101);
+
+    const releaseLeft  = () => { if (this.moveDir === -1) { this.moveDir = 0; this.leftBtn.fillAlpha = 0.85; } };
+    const releaseRight = () => { if (this.moveDir ===  1) { this.moveDir = 0; this.rightBtn.fillAlpha = 0.85; } };
+    this.leftBtn.on('pointerdown', (pt,lx,ly,ev) => {
+      ev.stopPropagation(); this.moveDir = -1; this.leftBtn.fillAlpha = 1.0;
+    });
+    this.leftBtn.on('pointerup',        releaseLeft);
+    this.leftBtn.on('pointerupoutside', releaseLeft);
+    this.leftBtn.on('pointerout',       releaseLeft);
+    this.rightBtn.on('pointerdown', (pt,lx,ly,ev) => {
+      ev.stopPropagation(); this.moveDir = 1; this.rightBtn.fillAlpha = 1.0;
+    });
+    this.rightBtn.on('pointerup',        releaseRight);
+    this.rightBtn.on('pointerupoutside', releaseRight);
+    this.rightBtn.on('pointerout',       releaseRight);
   }
 
   // ---- Input ----
@@ -1055,8 +1084,12 @@ class RaceScene extends Phaser.Scene {
     const sy = this.scale.height / GAME_H;
     const wx = (GAME_W - 110) * sx, wy = (GAME_H - 110) * sy;
     const bx = 110 * sx, by = (GAME_H - 110) * sy;
+    const lx = 215 * sx, ly = (GAME_H - 110) * sy;
+    const rx = 325 * sx, ry = (GAME_H - 110) * sy;
     if (Phaser.Math.Distance.Between(pt.x, pt.y, wx, wy) < 80 * sx) return true;
     if (Phaser.Math.Distance.Between(pt.x, pt.y, bx, by) < 70 * sx) return true;
+    if (Phaser.Math.Distance.Between(pt.x, pt.y, lx, ly) < 42 * sx) return true;
+    if (Phaser.Math.Distance.Between(pt.x, pt.y, rx, ry) < 42 * sx) return true;
     return false;
   }
 
@@ -1089,13 +1122,13 @@ class RaceScene extends Phaser.Scene {
     const b = this.physics.add.image(x, -250, 'boss').setScale(0.55).setDepth(9);
     b.body.setSize(b.width * 0.6, b.height * 0.7);
     b.kind = 'boss';
-    b.hp = 525; b.maxHp = 525;
+    b.hp = 650; b.maxHp = 650;
     b.aiType = 'boss';
     b.scoreValue = 5000;
     b.phase = 1;
     b.targetX = x;
-    b.attackCooldown = 1800;
-    b.spearCooldown = 5000;
+    b.attackCooldown = 1100;
+    b.spearCooldown = 3200;
     b.bladeSpawnDone = false;
     this.rivals.add(b);
     this.boss = b;
@@ -1344,7 +1377,7 @@ class RaceScene extends Phaser.Scene {
     if (!this.boss || !this.boss.active) return;
     for (let i = -1; i <= 1; i++) {
       const offX = i * 90;
-      this.dropMine(this.boss.x + offX, this.boss.y + 50, { dmg: 30 });
+      this.dropMine(this.boss.x + offX, this.boss.y + 50, { dmg: 42 });
     }
     const w = this.add.rectangle(this.boss.x, GAME_H/2, 6, GAME_H, 0xff4040, 0.5).setDepth(2);
     this.tweens.add({ targets: w, alpha: 0, duration: 350, onComplete: () => w.destroy() });
@@ -1353,15 +1386,15 @@ class RaceScene extends Phaser.Scene {
   // ---- Boss phase 4 blades ----
   spawnBossBlades() {
     if (!this.boss) return;
-    const count = 4;
+    const count = 5;
     for (let i = 0; i < count; i++) {
       const bl = this.add.image(this.boss.x, this.boss.y, 'pix_blade').setDepth(11);
       this.physics.add.existing(bl);
       bl.body.setSize(28, 28);
       bl.angleOff = (Math.PI * 2 * i) / count;
       bl.kind = 'blade';
-      bl.hp = 30;
-      bl.dmg = 25;
+      bl.hp = 40;
+      bl.dmg = 35;
       this.bossBlades.add(bl);
     }
     // Add overlap
@@ -1786,18 +1819,23 @@ class RaceScene extends Phaser.Scene {
         r.attackCooldown -= delta;
         r.spearCooldown -= delta;
         if (r.attackCooldown <= 0) {
-          this.dropMine(r.x, r.y + 50, { dmg: 24 });
-          if (r.phase >= 2) this.dropMine(r.x - 70, r.y + 50, { dmg: 22 });
-          if (r.phase >= 3) this.dropMine(r.x + 70, r.y + 50, { dmg: 22 });
-          if (r.phase >= 4) {
-            this.time.delayedCall(150, () => this.dropMine(r.x - 35, r.y + 50, { dmg: 22 }));
-            this.time.delayedCall(300, () => this.dropMine(r.x + 35, r.y + 50, { dmg: 22 }));
+          this.dropMine(r.x, r.y + 50, { dmg: 32 });
+          this.dropMine(r.x - 70, r.y + 50, { dmg: 28 });
+          if (r.phase >= 2) this.dropMine(r.x + 70, r.y + 50, { dmg: 28 });
+          if (r.phase >= 3) {
+            this.time.delayedCall(120, () => { if (r.active) this.dropMine(r.x - 35, r.y + 50, { dmg: 28 }); });
+            this.time.delayedCall(240, () => { if (r.active) this.dropMine(r.x + 35, r.y + 50, { dmg: 28 }); });
           }
-          r.attackCooldown = r.phase === 1 ? 2200 : (r.phase === 2 ? 1700 : (r.phase === 3 ? 1300 : 900));
+          if (r.phase >= 4) {
+            this.time.delayedCall(360, () => { if (r.active) this.dropMine(r.x, r.y + 50, { dmg: 30 }); });
+            this.time.delayedCall(480, () => { if (r.active) this.dropMine(r.x - 110, r.y + 50, { dmg: 28 }); });
+            this.time.delayedCall(600, () => { if (r.active) this.dropMine(r.x + 110, r.y + 50, { dmg: 28 }); });
+          }
+          r.attackCooldown = r.phase === 1 ? 1500 : (r.phase === 2 ? 1100 : (r.phase === 3 ? 800 : 550));
         }
-        if (r.phase >= 2 && r.spearCooldown <= 0) {
+        if (r.spearCooldown <= 0) {
           this.bossSpear();
-          r.spearCooldown = r.phase === 2 ? 5500 : (r.phase === 3 ? 4000 : 3000);
+          r.spearCooldown = r.phase === 1 ? 4000 : (r.phase === 2 ? 3000 : (r.phase === 3 ? 2200 : 1500));
         }
       }
 
@@ -1828,12 +1866,12 @@ class RaceScene extends Phaser.Scene {
 
     // Boss orbiting blades
     if (this.boss && this.boss.active) {
-      const orbitR = 110;
+      const orbitR = 120;
       this.bossBlades.getChildren().forEach(bl => {
-        bl.angleOff = (bl.angleOff || 0) + dt * 3;
+        bl.angleOff = (bl.angleOff || 0) + dt * 4.2;
         bl.x = this.boss.x + Math.cos(bl.angleOff) * orbitR;
         bl.y = this.boss.y + Math.sin(bl.angleOff) * orbitR;
-        bl.rotation += dt * 8;
+        bl.rotation += dt * 10;
       });
     }
 
@@ -1866,9 +1904,16 @@ class RaceScene extends Phaser.Scene {
       // optional flicker via tint when shield about to end
     }
 
-    // Keyboard fallback
-    if (this.cursors.left.isDown)  this.player.x = Math.max(ROAD_LEFT + 40, this.player.x - 6);
-    if (this.cursors.right.isDown) this.player.x = Math.min(ROAD_RIGHT - 40, this.player.x + 6);
+    // Movement (touch buttons + keyboard ←→)
+    let dir = this.moveDir || 0;
+    if (this.cursors.left.isDown)  dir = -1;
+    if (this.cursors.right.isDown) dir =  1;
+    if (dir !== 0 && !this.gameOver && !this.stageClear) {
+      this.player.x = Phaser.Math.Clamp(
+        this.player.x + dir * 320 * dt,
+        ROAD_LEFT + 40, ROAD_RIGHT - 40
+      );
+    }
     if (Phaser.Input.Keyboard.JustDown(this.keyZ) || Phaser.Input.Keyboard.JustDown(this.keySpace)) this.attackWhip();
     if (Phaser.Input.Keyboard.JustDown(this.keyShift)) this.tryBoost();
 
